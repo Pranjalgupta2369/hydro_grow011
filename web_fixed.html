@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hydro-Grow Cloud</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4">
+
+    <div id="login-screen" class="w-full max-w-sm mt-20 bg-gray-800 p-8 rounded-2xl shadow-2xl">
+        <h1 class="text-3xl font-bold text-center mb-6 text-green-400">Hydro-Grow</h1>
+        <input type="email" id="email" placeholder="Email" class="w-full mb-4 p-3 rounded bg-gray-700 border border-gray-600 focus:border-green-500 outline-none">
+        <input type="password" id="password" placeholder="Password" class="w-full mb-6 p-3 rounded bg-gray-700 border border-gray-600 focus:border-green-500 outline-none">
+        <button onclick="login()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded transition">LOGIN</button>
+    </div>
+
+    <div id="dashboard" class="w-full max-w-lg hidden">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold text-green-400">Hydro-Grow Live</h1>
+            <button onclick="logout()" class="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded">Logout</button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 text-center">
+                <i class="fas fa-temperature-high text-orange-400 text-2xl mb-2"></i>
+                <p class="text-gray-400 text-xs">Temperature</p>
+                <p class="text-3xl font-bold"><span id="val-temp">--</span>°C</p>
+            </div>
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 text-center">
+                <i class="fas fa-water text-blue-400 text-2xl mb-2"></i>
+                <p class="text-gray-400 text-xs">Water Level</p>
+                <p class="text-3xl font-bold"><span id="val-water">--</span>%</p>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-700">
+                <span>Manual Override</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="check-manual" class="sr-only peer" onchange="toggleManual()">
+                    <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                </label>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <button id="btn-pump" onclick="toggleRelay('pump')" class="p-4 rounded-lg bg-gray-700 opacity-50 cursor-not-allowed">PUMP OFF</button>
+                <button id="btn-light" onclick="toggleRelay('light')" class="p-4 rounded-lg bg-gray-700 opacity-50 cursor-not-allowed">LIGHT OFF</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- YOUR CONFIG (Added Automatically) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAvAfAZ15wd2Fh1u8qhTuW7CV04AYdRRqA",
+            authDomain: "hydrogrow-001.firebaseapp.com",
+            databaseURL: "https://hydrogrow-001-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "hydrogrow-001",
+            storageBucket: "hydrogrow-001.firebasestorage.app",
+            messagingSenderId: "659669346848",
+            appId: "1:659669346848:web:ce236eea9ec0b28a026a45"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+
+        // Login Logic
+        function login() {
+            const e = document.getElementById('email').value;
+            const p = document.getElementById('password').value;
+            auth.signInWithEmailAndPassword(e, p).then(() => {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('dashboard').classList.remove('hidden');
+                startListening();
+            }).catch(e => alert(e.message));
+        }
+
+        function logout() { auth.signOut().then(() => location.reload()); }
+
+        // Realtime Listeners
+        function startListening() {
+            db.ref('hydro').on('value', (snap) => {
+                const data = snap.val();
+                if(!data) return;
+
+                // Update Sensors
+                document.getElementById('val-temp').innerText = data.temp;
+                document.getElementById('val-water').innerText = data.water;
+
+                // Update Manual Toggle
+                document.getElementById('check-manual').checked = data.manual;
+                
+                // Update Buttons
+                updateButton('btn-pump', data.pump, data.manual);
+                updateButton('btn-light', data.light, data.manual);
+            });
+        }
+
+        function updateButton(id, state, manual) {
+            const btn = document.getElementById(id);
+            if (!manual) {
+                btn.className = "p-4 rounded-lg bg-gray-700 opacity-50 cursor-not-allowed";
+                btn.innerText = state ? "AUTO (ON)" : "AUTO (OFF)";
+                btn.disabled = true;
+            } else {
+                btn.disabled = false;
+                if (state) {
+                    btn.className = "p-4 rounded-lg bg-green-600 text-white font-bold shadow-lg shadow-green-500/50";
+                    btn.innerText = "ON";
+                } else {
+                    btn.className = "p-4 rounded-lg bg-gray-600 text-gray-300 font-bold";
+                    btn.innerText = "OFF";
+                }
+            }
+        }
+
+        // Actions
+        function toggleManual() {
+            const state = document.getElementById('check-manual').checked;
+            db.ref('hydro/manual').set(state);
+        }
+
+        function toggleRelay(device) {
+            db.ref('hydro/' + device).once('value', snap => {
+                db.ref('hydro/' + device).set(!snap.val());
+            });
+        }
+    </script>
+</body>
+</html>
